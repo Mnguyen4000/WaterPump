@@ -1,1 +1,0 @@
-"mcuboot":"/home/marcus/WaterPump/sensor/bootloader/mcuboot":"/home/marcus/WaterPump/sensor/bootloader/mcuboot/boot/zephyr/sysbuild"
