@@ -5,3 +5,5 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(sensors)
 
 target_sources(app PRIVATE src/main.c)
+target_sources(app PRIVATE src/sensors.c)
+target_sources(app PRIVATE src/bme68x.c)
