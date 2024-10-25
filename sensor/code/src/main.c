@@ -34,7 +34,7 @@ static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(POWERLED, gpios);
 
 int main(void)
 {
-    
+    // Initialising
 	int ret;
 	bool led_state = true;
 
@@ -43,6 +43,8 @@ int main(void)
 	}
 	i2c_initt();
 	ret = gpio_pin_configure_dt(&led, GPIO_OUTPUT | GPIO_ACTIVE_LOW);
+	
+	LTR329_init();
 
 	if (ret < 0) {
 		return 0;
@@ -50,10 +52,13 @@ int main(void)
 
 	ret = gpio_pin_set_dt(&led, 0);
 	while (1) {
+		BME680_init();
 		BME680_read();
+		//adc_test();
+		//LTR329_read();
 		ret = gpio_pin_toggle_dt(&led);
 		led_state = !led_state;
-		printf("LED state: %s\n", led_state ? "ON" : "OFF");
+		//printf("LED state: %s\n", led_state ? "ON" : "OFF");
 		k_msleep(SLEEP_TIME_MS);
 	}
     return 0;
