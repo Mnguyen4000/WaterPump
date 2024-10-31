@@ -6,3 +6,7 @@ project(sensors)
 
 target_sources(app PRIVATE src/main.c)
 target_sources(app PRIVATE src/sensors.c)
+target_sources(app PRIVATE src/BLE.c)
+
+
+zephyr_library_include_directories(${ZEPHYR_BASE}/samples/bluetooth)

@@ -32,19 +32,13 @@ static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(POWERLED, gpios);
 int main(void)
 {
     // Initialising
-	int ret;
-	bool led_state = true;
 
 	if (!gpio_is_ready_dt(&led)) {
 		return 0;
 	}
 	
 
-	ret = gpio_pin_configure_dt(&led, GPIO_OUTPUT | GPIO_ACTIVE_LOW);
-
-	if (ret < 0) {
-		return 0;
-	}
+	gpio_pin_configure_dt(&led, GPIO_OUTPUT | GPIO_ACTIVE_LOW);
 
 	// Initialise modules
 	i2c_init();
