@@ -133,26 +133,16 @@ int adc_test(void) {
 	soil_init();
 	uv_init();
 
-
-	while (1) {
-		k_sleep(K_MSEC(1000));
-	}
-
 }
 
-int i2c_initt(void) {
+int i2c_init(void) {
     
     I2C_SPEED_SET(I2C_SPEED_STANDARD);
 
     if (!device_is_ready(i2c_dev) || i2c_dev == NULL) {
-    //send_str(uart0, "hed:");
-    //LOG_ERR("Device not ready");
-    printf("huh");
+		printk("Error: I2C did not initialise properly.");
     return -1;
     }
-    printf("worked\n");
-
-
     return 0;
 }
 
@@ -485,7 +475,6 @@ int BME680_pressure_int(void) {
 	press_comp = (int32_t)(press_comp) + ((var1 + var2 + var3 + ((int32_t)par_p7 << 7)) >> 4);
 	//printf("Pressure: %d\n", press_comp);
 	//printf("Pressure: %d.%02d\n", press_comp/100, press_comp % 100);
-	// Note to marcus, may need to -120 to the number to calibrate it.
 	return press_comp;
 }
 

@@ -20,15 +20,12 @@ int main(void) {
 
 #include "sensors.h"
 /* 1000 msec = 1 sec */
-#define SLEEP_TIME_MS   100
+#define SLEEP_TIME_MS   1000
 
 /* The devicetree node identifier for the "led0" alias. */
 #define POWERLED DT_ALIAS(led0)
 
-/*
- * A build error on this line means your board is unsupported.
- * See the sample documentation for information on how to fix this.
- */
+// Set LED
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(POWERLED, gpios);
 
 
@@ -41,19 +38,22 @@ int main(void)
 	if (!gpio_is_ready_dt(&led)) {
 		return 0;
 	}
-	i2c_initt();
-	ret = gpio_pin_configure_dt(&led, GPIO_OUTPUT | GPIO_ACTIVE_LOW);
 	
-	soil_init();
-	uv_init();
-	BME680_init();
-	LTR329_init();
+
+	ret = gpio_pin_configure_dt(&led, GPIO_OUTPUT | GPIO_ACTIVE_LOW);
 
 	if (ret < 0) {
 		return 0;
 	}
 
-	ret = gpio_pin_set_dt(&led, 0);
+	// Initialise modules
+	i2c_init();
+	soil_init();
+	uv_init();
+	BME680_init();
+	LTR329_init();
+
+	gpio_pin_set_dt(&led, 0);
 	while (1) {
 		printk("---READING---\n");
 		BME680_measure();
@@ -62,10 +62,8 @@ int main(void)
 		soil_read_percent();
 		uv_read_percent();
 
-
-		ret = gpio_pin_toggle_dt(&led);
-		led_state = !led_state;
-		//printf("LED state: %s\n", led_state ? "ON" : "OFF");
+		// Toggle LED
+		gpio_pin_toggle_dt(&led);
 		k_msleep(SLEEP_TIME_MS);
 	}
     return 0;
