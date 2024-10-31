@@ -27,8 +27,9 @@ struct adc_sequence sequence = {
 	.buffer_size = sizeof(buf),
 };
 
-
-
+// Declaring the function beforehand.
+int BME680_temp_int(void);
+int BME680_res_heat(void);
 
 int soil_init(void) {
 	int err;
@@ -67,7 +68,6 @@ int uv_init(void) {
 }
 
 int soil_read(void) {
-	int err;
 	int32_t val_mv;
 
 	(void)adc_sequence_init_dt(&SOIL, &sequence);
@@ -117,15 +117,15 @@ int uv_read(void) {
 
 int soil_read_percent(void) {
 	int value = soil_read();
-	int percent = ((float) value - 62.0) / 9.6;
-	printk("SOIL: %i%\n", percent);
+	int percent = ((double) value - 62.0) / 9.6;
+	printk("SOIL: %i% \n", percent);
 	return percent;
 } 
 
 int uv_read_percent(void) {
 	int value = uv_read();
-	int percent = ((float) value - 62.0) / 9.6;
-	printk("UV: %i%\n", percent);
+	int percent = ((double) value - 62.0) / 9.6;
+	printk("UV: %i% \n", percent);
 	return percent;
 }
 
@@ -196,20 +196,78 @@ int LTR329_read(void) {
 }
 
 int BME680_init(void) {
-	// CTRL Measure, Turning on temperature, pressure
-    uint8_t buf1[2] = {0x74, 0b00100101};
-    int ret = i2c_write(i2c_dev, buf1, 2, BME680_ADDR);
-
 	// Turn on Humidity
 	uint8_t buf2[2] = {0x72, 0b00000001};
-    ret = i2c_write(i2c_dev, buf2, 2, BME680_ADDR);
+    i2c_write(i2c_dev, buf2, 2, BME680_ADDR);
 
+
+	// Set Gas Interval to 100ms, 
+	uint8_t buf3[2] = {0x64, 0x59}; // Set to 100ms
+    i2c_write(i2c_dev, buf3, 2, BME680_ADDR);
+
+	// Set Gas temp to ???, 
+	uint8_t buf4[2] = {0x5A, (uint8_t) BME680_res_heat()}; // Set to 100ms
+    i2c_write(i2c_dev, buf4, 2, BME680_ADDR);
+	
 	// Turn on Gas
+	uint8_t buf5[2] = {0x71, 0x10};
+    i2c_write(i2c_dev, buf5, 2, BME680_ADDR);
 
-	uint8_t buf3[2] = {0x71, 0b00010000};
-    ret = i2c_write(i2c_dev, buf3, 2, BME680_ADDR);
-
+	// CTRL Measure, Turning on temperature, pressure
+    uint8_t buf1[2] = {0x74, 0b00100101};
+    i2c_write(i2c_dev, buf1, 2, BME680_ADDR);
     return 0;
+}
+
+int BME680_res_heat(void) {
+	// Initialise the variables
+	int amb_temp, res_heat_x100, res_heat_x;
+	int var1, var2, var3, var4, var5;
+	
+	int target_temp = 300;
+
+	// Get calibration parameters
+	uint8_t buffer1[4], buffer2[3];
+    uint8_t read1[1] = {0xEB};
+    i2c_write(i2c_dev, read1, 1, BME680_ADDR);
+    k_sleep(K_MSEC(30));
+    i2c_read(i2c_dev, buffer1, 4, BME680_ADDR);
+
+	int16_t par_g1 = buffer1[2];
+
+	int16_t par_g2 = buffer1[0] | buffer1[1] << 8;
+	int16_t par_g3 = buffer1[3];
+
+    uint8_t read2[1] = {0x00};
+    i2c_write(i2c_dev, read2, 1, BME680_ADDR);
+    k_sleep(K_MSEC(30));
+    i2c_read(i2c_dev, buffer2, 3, BME680_ADDR);
+
+	int res_heat_val = buffer2[0];
+	int res_heat_range = (buffer2[2] & (1 << 4 | 1 << 5)) >> 4;
+
+	amb_temp = BME680_temp_int() / 100;
+	//amb_temp = 20;
+
+	
+	// Calculations.
+	var1 = (((int32_t)amb_temp * par_g3) / 10) << 8;
+	var2 = (par_g1 + 784) * (((((par_g2 + 154009) * target_temp * 5) / 100) + 3276800) / 10);
+	var3 = var1 + (var2 >> 1);
+	var4 = (var3 / (res_heat_range + 4));
+	var5 = (131 * res_heat_val) + 65536;
+	res_heat_x100 = (int32_t)(((var4 / var5) - 250) * 34);
+	res_heat_x = (uint8_t)((res_heat_x100 + 50) / 100);
+	printk("TEST: %d\n", res_heat_x);
+	return res_heat_x;
+}
+
+
+int BME680_measure(void) {
+	// CTRL Measure, Turning on temperature, pressure
+    uint8_t buf1[2] = {0x74, 0b00100101};
+    i2c_write(i2c_dev, buf1, 2, BME680_ADDR);
+	return 0;
 }
 
 int BME680_temp_raw(void) {
@@ -240,15 +298,15 @@ int BME680_pressure_raw(void) {
 
 int BME680_gas_raw(void) {
 	// Read Gas
-    uint8_t read1[0] = {0x2A};
+    uint8_t read1[1] = {0x2A};
 	uint8_t buffer[2];
     i2c_write(i2c_dev, read1, 1, BME680_ADDR);
     k_sleep(K_MSEC(30));
     i2c_read(i2c_dev, buffer, 2, BME680_ADDR);
 
-	int result = buffer[0] << 8 | buffer[1];
+	int result = buffer[0] << 8 | (buffer[1] & ((1 << 7) | (1 << 6))) ;
 	
-	printf("Gas: %d\n", result);
+	//printf("Gas: %d\n", result);
 
 	return result >> 6;
 
@@ -431,18 +489,60 @@ int BME680_pressure_int(void) {
 	return press_comp;
 }
 
+// Max of 50000ohms and Min of 50 Ohms, The higher it is, the cleaner the air.
+int BME680_gas_int(void) {
+
+	int const_array1_int[] = {2147483647, 2147483647, 2147483647, 2147483647, 2147483647, 2126008810, 2147483647, 2130303777, 2147483647, 2147483647, 2143188679, 2136746228, 2147483647, 2126008810, 2147483647, 2147483647};
+	int const_array2_int[] = {4096000000, 2048000000, 1024000000, 512000000, 255744255, 127110228, 64000000, 32258064, 16016016, 8000000, 4000000, 2000000, 1000000, 500000, 250000, 125000};
+	int gas_adc = BME680_gas_raw();
+	uint8_t buffer[2];
+	
+	// Get calibration parameters
+	uint8_t read1[1] = {0x2B};
+    i2c_write(i2c_dev, read1, 1, BME680_ADDR);
+    k_sleep(K_MSEC(30));
+    i2c_read(i2c_dev, buffer, 1, BME680_ADDR);
+
+	uint8_t gas_range = buffer[0] & 0b00001111;
+
+	// Get calibration parameters
+	uint8_t read2[1] = {0x04};
+    i2c_write(i2c_dev, read2, 1, BME680_ADDR);
+    k_sleep(K_MSEC(30));
+    i2c_read(i2c_dev, buffer, 1, BME680_ADDR);
+
+	uint8_t range_switching_error = buffer[0];
+
+	int64_t var1 = (int64_t)(((1340 + (5 * (int64_t)range_switching_error)) *
+		((int64_t)const_array1_int[gas_range])) >> 16);
+	int64_t var2 = (int64_t)(gas_adc << 15) - (int64_t)(1 << 24) + var1;
+	int32_t gas_res = (int32_t)((((int64_t)(const_array2_int[gas_range] * (int64_t)var1) >> 9) + (var2 >>
+	1)) / var2);
+
+	return gas_res;
+}
+
+// Ranges from 0 to 500, with 0 being healthy and 500 being bad.
+int BME680_IAQ(void) {
+	double result = ((double)BME680_gas_int() - 50.0) / 499.50; // Percentage (out of 100%)
+	int IAQ = 500.0 - result * 5.0; // IAQ index (out of 500%)
+	return IAQ;
+}
+
 int BME680_read(void) {
 
 	int temp, press, hum, gas;
 	temp = BME680_temp_int();
 	press = BME680_pressure_int();
 	hum = BME680_humidity_int();
-	gas = BME680_gas_raw();
+	//gas = BME680_gas_int(); 
+	gas =  BME680_IAQ();
 
 
 	printf("Temp: %d.%02d\n", temp / 100, temp % 100);
 	printf("Pressure: %d.%02d\n", press / 100, press % 100);
 	printf("Humidity: %d.%02d\n", hum / 1000, hum % 1000);
+	printf("Gas: %d% \n", gas);
 
     printf("\n");
     return 0;

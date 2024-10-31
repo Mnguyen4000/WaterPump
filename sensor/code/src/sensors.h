@@ -18,6 +18,7 @@ int uv_read_percent(void);
 
 int BME680_init(void);
 int BME680_read(void);
+int BME680_measure(void);
 int BME680_temp_int(void);
 int BME680_temp_float(void);
 int BME680_humidity_int(void);
