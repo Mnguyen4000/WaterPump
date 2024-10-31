@@ -6,14 +6,139 @@
 #define BME680_ADDR 0x76 // Note the LSB is determined by the VDO state
 #define LTR329_ADDR 0x29
 
-
-/* ADC node from the devicetree. */
-//#define ADC_NODE DT_ALIAS(adc2)
-
-/* Data of ADC device specified in devicetree. */
-//const struct device *adc = DEVICE_DT_GET(ADC_NODE);
+#define SOIL adc_channels[0]
+#define UV adc_channels[1]
 
 const struct device *i2c_dev = DEVICE_DT_GET(DT_NODELABEL(i2c0));
+
+#define DT_SPEC_AND_COMMA(node_id, prop, idx) \
+	ADC_DT_SPEC_GET_BY_IDX(node_id, idx),
+
+static const struct adc_dt_spec adc_channels[] = {
+	DT_FOREACH_PROP_ELEM(DT_PATH(zephyr_user), io_channels,
+			     DT_SPEC_AND_COMMA)
+};
+
+uint16_t buf;
+
+struct adc_sequence sequence = {
+	.buffer = &buf,
+	// buffer size in bytes, not number of samples
+	.buffer_size = sizeof(buf),
+};
+
+
+
+
+int soil_init(void) {
+	int err;
+
+	/* Configure channels individually prior to sampling. */
+	if (!adc_is_ready_dt(&SOIL)) {
+		printk("ADC controller device %s not ready\n", SOIL.dev->name);
+		return 1;
+	}
+
+	err = adc_channel_setup_dt(&SOIL);
+	if (err < 0) {
+		printk("Could not setup channel #%d (%d)\n", 0, err);
+		return 1;
+	}
+	printk("SOIL Initialised!\n");
+	return 0;
+}
+
+int uv_init(void) {
+	int err;
+	/* Configure channels individually prior to sampling. */
+	if (!adc_is_ready_dt(&UV)) {
+		printk("ADC controller device %s not ready\n", UV.dev->name);
+		return 1;
+	}
+
+	err = adc_channel_setup_dt(&UV);
+	if (err < 0) {
+		printk("Could not setup channel #%d (%d)\n", 1, err);
+		return 1;
+	}
+
+	printk("UV Initialised!\n");
+	return 0;
+}
+
+int soil_read(void) {
+	int err;
+	int32_t val_mv;
+
+	(void)adc_sequence_init_dt(&SOIL, &sequence);
+	adc_read_dt(&SOIL, &sequence);
+
+	/*
+		* If using differential mode, the 16 bit value
+		* in the ADC sample buffer should be a signed 2's
+		* complement value.
+		*/
+	if (SOIL.channel_cfg.differential) {
+		val_mv = (int32_t)((int16_t)buf);
+	} else {
+		val_mv = (int32_t)buf;
+	}
+	
+	adc_raw_to_millivolts_dt(&SOIL, &val_mv);
+
+	return val_mv;
+}
+
+int uv_read(void) {
+	int err;
+	int32_t val_mv;
+
+	(void)adc_sequence_init_dt(&UV, &sequence);
+
+	err = adc_read_dt(&UV, &sequence);
+	if (err < 0) {
+		printk("Could not read (%d)\n", err);
+	}
+
+	/*
+		* If using differential mode, the 16 bit value
+		* in the ADC sample buffer should be a signed 2's
+		* complement value.
+		*/
+	if (UV.channel_cfg.differential) {
+		val_mv = (int32_t)((int16_t)buf);
+	} else {
+		val_mv = (int32_t)buf;
+	}
+	adc_raw_to_millivolts_dt(&UV, &val_mv);
+
+	return val_mv;
+}
+
+int soil_read_percent(void) {
+	int value = soil_read();
+	int percent = ((float) value - 62.0) / 9.6;
+	printk("SOIL: %i%\n", percent);
+	return percent;
+} 
+
+int uv_read_percent(void) {
+	int value = uv_read();
+	int percent = ((float) value - 62.0) / 9.6;
+	printk("UV: %i%\n", percent);
+	return percent;
+}
+
+int adc_test(void) {
+	soil_init();
+	uv_init();
+
+
+	while (1) {
+		k_sleep(K_MSEC(1000));
+	}
+
+}
 
 int i2c_initt(void) {
     
@@ -31,95 +156,6 @@ int i2c_initt(void) {
     return 0;
 }
 
-/* Auxiliary macro to obtain channel vref, if available. */
-//#define CHANNEL_VREF(node_id) DT_PROP_OR(node_id, zephyr_vref_mv, 0)
-
-/* Data array of ADC channels for the specified ADC. */
-//static const struct adc_channel_cfg channel_cfgs[] = {
-//	DT_FOREACH_CHILD_SEP(ADC_NODE, ADC_CHANNEL_CFG_DT, (,))};
-
-/* Data array of ADC channel voltage references. */
-//static uint32_t vrefs_mv[] = {DT_FOREACH_CHILD_SEP(ADC_NODE, CHANNEL_VREF, (,))};
-
-/* Get the number of channels defined on the DTS. */
-//#define CHANNEL_COUNT ARRAY_SIZE(channel_cfgs)
-
-//#define CONFIG_SEQUENCE_SAMPLES 5
-//#define CONFIG_SEQUENCE_RESOLUTION 12
-/*
-int adc_test(void) {
-	int err;
-	uint32_t count = 0;
-	uint16_t channel_reading[CONFIG_SEQUENCE_SAMPLES][CHANNEL_COUNT];
-
-	const struct adc_sequence_options options = {
-		.extra_samplings = CONFIG_SEQUENCE_SAMPLES - 1,
-		.interval_us = 0,
-	};
-
-	struct adc_sequence sequence = {
-		.buffer = channel_reading,
-		.buffer_size = sizeof(channel_reading),
-		.resolution = CONFIG_SEQUENCE_RESOLUTION,
-		.options = &options,
-	};
-
-	if (!device_is_ready(adc)) {
-		printf("ADC controller device %s not ready\n", adc->name);
-		return 0;
-	}
-
-	for (size_t i = 0U; i < CHANNEL_COUNT; i++) {
-		sequence.channels |= BIT(channel_cfgs[i].channel_id);
-		err = adc_channel_setup(adc, &channel_cfgs[i]);
-		if (err < 0) {
-			printf("Could not setup channel #%d (%d)\n", i, err);
-			return 0;
-		}
-		if (channel_cfgs[i].reference == ADC_REF_INTERNAL) {
-			vrefs_mv[i] = adc_ref_internal(adc);
-		}
-	}
-
-	while (1) {
-
-		printf("ADC sequence reading [%u]:\n", count++);
-		k_msleep(1000);
-
-		err = adc_read(adc, &sequence);
-		if (err < 0) {
-			printf("Could not read (%d)\n", err);
-			continue;
-		}
-
-		for (size_t channel_index = 0U; channel_index < CHANNEL_COUNT; channel_index++) {
-			int32_t val_mv;
-
-			printf("- %s, channel %" PRId32 ", %" PRId32 " sequence samples:\n",
-			       adc->name, channel_cfgs[channel_index].channel_id,
-			       CONFIG_SEQUENCE_SAMPLES);
-			for (size_t sample_index = 0U; sample_index < CONFIG_SEQUENCE_SAMPLES;
-			     sample_index++) {
-
-				val_mv = channel_reading[sample_index][channel_index];
-
-				printf("- - %" PRId32, val_mv);
-				err = adc_raw_to_millivolts(vrefs_mv[channel_index],
-							    channel_cfgs[channel_index].gain,
-							    CONFIG_SEQUENCE_RESOLUTION, &val_mv);
-
-				if ((err < 0) || vrefs_mv[channel_index] == 0) {
-					printf(" (value in mV not available)\n");
-				} else {
-					printf(" = %" PRId32 "mV\n", val_mv);
-				}
-			}
-		}
-	}
-
-	return 0;
-}
-*/
 
 int i2c_test(void) {
 
@@ -212,7 +248,7 @@ int BME680_gas_raw(void) {
 
 	int result = buffer[0] << 8 | buffer[1];
 	
-	printf("Gas: %d", result);
+	printf("Gas: %d\n", result);
 
 	return result >> 6;
 
@@ -296,7 +332,7 @@ int BME680_temp_int(void) {
 	var3 = ((((var1 >> 1) * (var1 >> 1)) >> 12) * ((int32_t)par_t3 << 4)) >> 14;
 	t_fine = var2 + var3;
 	temp_comp = ((t_fine * 5) + 128) >> 8;
-	printf("Temp: %d\n", temp_comp);
+	//printf("Temp: %d\n", temp_comp);
 	return temp_comp;
 }
 
@@ -337,7 +373,8 @@ int BME680_humidity_int(void) {
 	var6 = (var4 * var5) >> 1;
 	hum_comp = (((var3 + var6) >> 10) * ((int32_t) 1000)) >> 12;
 	
-	printf("Humidity: %d\n", hum_comp);
+	//printf("Humidity: %d\n", hum_comp);
+	//printf("Humidity: %d.%02d\n", hum_comp / 1000, hum_comp % 1000);
 	return hum_comp;
 }
 
@@ -388,41 +425,25 @@ int BME680_pressure_int(void) {
 	var2 = ((int32_t)(press_comp >> 2) * (int32_t)par_p8) >> 13;
 	var3 = ((int32_t)(press_comp >> 8) * (int32_t)(press_comp >> 8) * (int32_t)(press_comp >> 8) * (int32_t)par_p10) >> 17;
 	press_comp = (int32_t)(press_comp) + ((var1 + var2 + var3 + ((int32_t)par_p7 << 7)) >> 4);
-	printf("Pressure: %d\n", press_comp);
+	//printf("Pressure: %d\n", press_comp);
+	//printf("Pressure: %d.%02d\n", press_comp/100, press_comp % 100);
 	// Note to marcus, may need to -120 to the number to calibrate it.
 	return press_comp;
 }
 
 int BME680_read(void) {
 
-    // Writing something in i2c
-    //uint8_t buf[2] = { 0x00, 0x37};
-    //int ret = i2c_write(i2c_dev, buf, 2, BME680_ADDR);
-
-	//BME680_temp_raw();
-	BME680_temp_int();
-	BME680_pressure_int();
-	BME680_humidity_int();
-	BME680_gas_raw();
-	//BME680_temp_float();
-    uint8_t buffer1[3];
-    uint8_t read1[1] = {0x22};
+	int temp, press, hum, gas;
+	temp = BME680_temp_int();
+	press = BME680_pressure_int();
+	hum = BME680_humidity_int();
+	gas = BME680_gas_raw();
 
 
+	printf("Temp: %d.%02d\n", temp / 100, temp % 100);
+	printf("Pressure: %d.%02d\n", press / 100, press % 100);
+	printf("Humidity: %d.%02d\n", hum / 1000, hum % 1000);
 
-
-
-	/*
-	uint8_t buffer1[3];
-    uint8_t read1[1] = {0x8C};
-    i2c_write(i2c_dev, read1, 1, BME680_ADDR);
-    k_sleep(K_MSEC(30));
-    i2c_read(i2c_dev, buffer1, 2, BME680_ADDR);
-    for (int i = 0; i < 2; i++) {
-
-    printf("%x-", buffer1[2]);
-    }
-	*/
     printf("\n");
     return 0;
 }

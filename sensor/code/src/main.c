@@ -44,6 +44,11 @@ int main(void)
 	i2c_initt();
 	ret = gpio_pin_configure_dt(&led, GPIO_OUTPUT | GPIO_ACTIVE_LOW);
 	
+
+	//adc_test();
+	soil_init();
+	uv_init();
+
 	LTR329_init();
 
 	if (ret < 0) {
@@ -52,10 +57,14 @@ int main(void)
 
 	ret = gpio_pin_set_dt(&led, 0);
 	while (1) {
+		printk("---READING---\n");
 		BME680_init();
 		BME680_read();
-		//adc_test();
 		//LTR329_read();
+		soil_read_percent();
+		uv_read_percent();
+
+
 		ret = gpio_pin_toggle_dt(&led);
 		led_state = !led_state;
 		//printf("LED state: %s\n", led_state ? "ON" : "OFF");
