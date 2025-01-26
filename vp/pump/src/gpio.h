@@ -11,4 +11,5 @@ void relay_off(void);
 void powerLED_off(void);
 void debugLED_off(void);
 
+void read_button(void);
 #endif
